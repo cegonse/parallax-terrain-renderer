@@ -39,7 +39,7 @@ void OnProjectOpened(WindowsApplication* application);
 void OnRenderEngineCreated(WindowsApplication* application);
 void OnCameraTravelIndexChanged();
 
-glm::vec3 cameraPosition(1.26f, 0.085f, -0.905f);
+glm::vec3 cameraPosition(0.5f, 0.5f, -0.5f);
 glm::vec3 target(0.0f, 0.0f, 0.0f);
 
 /* Instance of the render engine */

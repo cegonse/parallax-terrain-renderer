@@ -36,10 +36,10 @@
    - LINEAR_SEARCH_PARALLAX
    - SECANT_PARALLAX
 */
-#define OFFSET_LIMITING_PARALLAX
+#define SIMPLE_PARALLAX
 
 // Iteration count for iterative parallax mapping approximation
-#define PARALLAX_IT 10
+#define PARALLAX_IT 3
 
 // UV coordinates of the incoming vertex
 in vec3 teUvCoordinates;
@@ -81,7 +81,7 @@ void main()
 
 #ifdef SIMPLE_PARALLAX
 		float hsb = texture(uHeightmap, teUvCoordinates.st).r - teUvCoordinates.z;
-		uvCoordOffset += hsb * SCALE * normEyeVector.xz / normEyeVector.y;
+		uvCoordOffset += hsb * SCALE * normEyeVector.xz;
 #endif
 
 #ifdef OFFSET_LIMITING_PARALLAX

@@ -111,7 +111,7 @@ void Texture::Load(const std::string & path, bool generateMipmaps, Profiler* pro
     _height = temp->height;
     _width = temp->width;
 	
-    std::cout << "Texture loaded: " << path << std::endl;
+    Debug::Log("Texture loaded: " + path);
     std::cout << "- Dimensions: " << _width << "x" << _height << std::endl;
     std::cout << "- Format: ";
 

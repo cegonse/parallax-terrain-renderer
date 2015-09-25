@@ -11,6 +11,11 @@ class Debug
         {
             std::cout << "[" << file << ":" << line << "] " << message << std::endl;
         }
+
+		static void Log(const std::string & message)
+		{
+			std::cout << message << std::endl;
+		}
 };
 
 #endif // DEBUG_H

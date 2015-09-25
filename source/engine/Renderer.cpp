@@ -117,7 +117,14 @@ Renderer::Renderer(int width, int height)
 		_terrainShader->AttachShader(tessTerrainEval.get());
 		_terrainShader->AttachShader(tessTerrainFrag.get());
 
-		_terrainShader->Build();
+		try
+		{
+			_terrainShader->Build();
+		}
+		catch (const std::runtime_error & ex)
+		{
+			throw ex;
+		}
 	}
 
 	/* Default viewport camera */
@@ -475,18 +482,9 @@ void Renderer::Draw3DBoundingBox(const glm::vec3 & center, const glm::vec3 & sca
 
 void Renderer::DrawTerrain(Terrain* terrain, const glm::vec2 & position, float metersPerPixel, bool manageLod, float maxDistance, int maxLod)
 {
-#ifdef WINDOWS_BUILD
-	uint64_t startTime = GetTickCount64();
-#else
-	time_t startTime = time(NULL);
-#endif
-
     TerrainData data = terrain->GetTerrainData();
+	terrain->GetShaderProgram()->SetActive(true);
 
-    GLuint shader = terrain->GetShaderProgram()->GetProgramId();
-    glUseProgram(shader);
-
-	float terrainScale = data.scale;
 	float heightmapSize = (float)terrain->GetHeightmap()->GetWidth();
 
     glm::mat4 scale = glm::mat4(1.0f);
@@ -496,117 +494,37 @@ void Renderer::DrawTerrain(Terrain* terrain, const glm::vec2 & position, float m
     glm::mat4 modelMatrix = translation * rotation * scale;
     glm::mat4 mvp = _viewportCamera->GetProjectionMatrix() * _viewportCamera->GetViewMatrix() * modelMatrix;
 
-    GLuint matrixUniformId = glGetUniformLocation(shader, "uMvpMatrix");
-	GLuint modelMatrixUniformId = glGetUniformLocation(shader, "uModelMatrix");
-
-	glUniformMatrix4fv(matrixUniformId, 1, GL_FALSE, &mvp[0][0]);
-	glUniformMatrix4fv(modelMatrixUniformId, 1, GL_FALSE, &modelMatrix[0][0]);
-
-    GLint textureId = glGetUniformLocation(shader, "uTextureSampler");
-    GLint heightmapId = glGetUniformLocation(shader, "uHeightmap");
-
-    GLint scaleId = glGetUniformLocation(shader, "uHeightScale");
-    GLint lodId = glGetUniformLocation(shader, "uLevelOfDetail");
-    GLint formatId = glGetUniformLocation(shader, "uColorFormat");
-	GLint eyePositionId = glGetUniformLocation(shader, "uEyeWorldPosition");
-	GLint viewportSizeId = glGetUniformLocation(shader, "uViewportSize");
-	GLint frustrumCullingId = glGetUniformLocation(shader, "uFrustrumCulling");
-	GLint maxLodDistanceId = glGetUniformLocation(shader, "uMaxLodDistance");
-	GLint tilePositionId = glGetUniformLocation(shader, "uTilePosition");
-	GLint manageLodId = glGetUniformLocation(shader, "uManageLod");
-	GLint subdivisionCountId = glGetUniformLocation(shader, "uSubdivisionCount");
-	GLint parallaxId = glGetUniformLocation(shader, "uParallax");
-
-    if (textureId != -1)
-    {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, terrain->GetTerrainTexture()->GetTextureId());
-        glUniform1i(textureId, 0);
-    }
-
-    if (heightmapId != -1)
-    {
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, terrain->GetHeightmap()->GetTextureId());
-        glUniform1i(heightmapId, 1);
-    }
-
-    if (scaleId != -1)
-    {
-        glUniform1f(scaleId, data.scale);
-    }
-
-    if (lodId != -1)
-    {
-        glUniform1f(lodId, (GLfloat) maxLod);
-    }
-
-    if (formatId != -1)
-    {
-		glUniform1i(formatId, data.format);
-    }
-
-	if (eyePositionId != -1)
+	try
 	{
-		glUniform3f(eyePositionId, _viewportCamera->GetOrigin().x, _viewportCamera->GetOrigin().y, _viewportCamera->GetOrigin().z);
-	}
+		terrain->GetShaderProgram()->SetUniformFloat("uHeightScale", data.scale);
+		terrain->GetShaderProgram()->SetUniformFloat("uLevelOfDetail", maxLod);
 
-	if (viewportSizeId != -1)
+		terrain->GetShaderProgram()->SetUniformVector("uEyeWorldPosition", _viewportCamera->GetOrigin());
+
+		terrain->GetShaderProgram()->SetUniformInteger("uFrustrumCulling", 1);
+		terrain->GetShaderProgram()->SetUniformFloat("uMaxLodDistance", maxDistance);
+		terrain->GetShaderProgram()->SetUniformInteger("uManageLod", manageLod ? 1 : 0);
+		terrain->GetShaderProgram()->SetUniformInteger("uParallax", _useParallax ? 1 : 0);
+
+		terrain->GetShaderProgram()->SetUniformInteger("uSubdivisionCount", terrain->GetSubdivisionCount());
+
+		terrain->GetShaderProgram()->SetUniformMatrix("uMvpMatrix", mvp);
+		terrain->GetShaderProgram()->SetUniformMatrix("uModelMatrix", modelMatrix);
+
+		terrain->GetShaderProgram()->SetUniformTexture("uTextureSampler", terrain->GetTerrainTexture(), 0);
+		terrain->GetShaderProgram()->SetUniformTexture("uHeightmap", terrain->GetHeightmap(), 1);
+	}
+	catch (const std::runtime_error & ex)
 	{
-		glUniform2f(viewportSizeId, (GLfloat)_width, (GLfloat)_height);
 	}
-
-	if (frustrumCullingId != -1)
-	{
-		glUniform1i(frustrumCullingId, 1);
-	}
-
-	if (maxLodDistanceId != -1)
-	{
-		glUniform1f(maxLodDistanceId, maxDistance);
-	}
-
-	if (tilePositionId != -1)
-	{
-		glUniform3f(tilePositionId, position.x * 10.0f, 0, position.y * 10.0f);
-	}
-
-	if (manageLodId != -1)
-	{
-		glUniform1i(manageLodId, manageLod ? 1 : 0);
-	}
-
-	if (subdivisionCountId != -1)
-	{
-		glUniform1i(subdivisionCountId, terrain->GetSubdivisionCount());
-	}
-
-	if (parallaxId != -1)
-	{
-		glUniform1i(parallaxId, _useParallax ? 1 : 0);
-	}
-
-#ifdef WINDOWS_BUILD
-	uint64_t commitStart = GetTickCount64();
-#else
-	time_t commitStart = time(NULL);
-#endif
 
 	int L = terrain->GetPointsPerPatch();
 
     glBindVertexArray(terrain->GetTerrainVAO());
 		glDrawArrays(GL_PATCHES, 0, L);
 	glBindVertexArray(0);
-	
-#ifdef WINDOWS_BUILD
-	uint64_t endTime = GetTickCount64();
-	_profiler.AddTileRenderTime(endTime - startTime);
-	_profiler.AddDrawCommandTime(endTime - commitStart);
-#else
-	time_t endTime = time(NULL);
-	_profiler.AddTileRenderTime(difftime(endTime, startTime));
-	_profiler.AddDrawCommandTime(difftime(endTime, commitStart));
-#endif
+
+	terrain->GetShaderProgram()->SetActive(false);
 }
 
 void Renderer::DrawProject(Project* project, bool manageLod, float maxDistance, int maxLod)

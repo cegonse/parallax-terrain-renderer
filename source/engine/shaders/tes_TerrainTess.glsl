@@ -44,12 +44,14 @@ in vec2 tcBoundingBox[];
 // Output UV coordinates, interpolated using the tessellation
 // patch coordinates
 out vec3 teUvCoordinates;
+
 // Output bounding box for the tile
 out vec2 teBoundingBox;
+// Output normal vector
 out vec3 teNormal;
-
 // Output eye-vertex vector, used for parallax mapping
 out vec3 teEyeVector;
+
 // World-space eye position, used for parallax mapping
 uniform vec3 uEyeWorldPosition;
 
@@ -63,8 +65,7 @@ uniform sampler2D uHeightmap;
 
 // Scale for the heightmap data
 uniform float uHeightScale;
-// Format used for the texture (8, 16 or 24 bits per sample)
-uniform int uColorFormat;
+
 // Number of patches used for the tessellation
 uniform int uSubdivisionCount;
 
@@ -154,6 +155,37 @@ void main()
 	vec3 worldSpaceVxPos = (uModelMatrix * gl_Position).xyz;
 	teEyeVector = worldSpaceVxPos - uEyeWorldPosition;
 	teUvCoordinates.z = texture2D(uHeightmap, teUvCoordinates.st).r;
+
+	vec3 p0 = centerVertex;
+	vec3 p1 = upVertex;
+	vec3 p2 = rightVertex;
+
+	float u0 = centerCoords.s;
+	float u1 = upCoords.s;
+	float u2 = rightCoords.s;
+
+	float v0 = centerCoords.t;
+	float v1 = upCoords.t;
+	float v2 = rightCoords.t;
+
+	vec3 T = normalize(
+			 ((v1-v0)*(p2-p0)-(v2-v0)*(p1-p0))
+			  /
+			 ((u2-u0)*(v1-v0)-(u1-u0)*(v2-v0))
+			 );
+	
+	vec3 B = normalize(
+		     ((u1-u0)*(p2-p0)-(u2-u0)*(p1-p0))
+			 /
+			 ((u1-u0)*(v2-v0)-(u2-u0)*(v1-v0))
+			 );
+	
+	vec3 N = normalize(cross(T, B));
+
+	mat3 TBN = inverse(mat3(N,B,T));
+
+	teEyeVector = TBN * teEyeVector;
+	teNormal = N;
 
 	// Pass-through bounding box
 	teBoundingBox = tcBoundingBox[0];
