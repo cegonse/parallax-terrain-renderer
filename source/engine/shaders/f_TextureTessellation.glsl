@@ -45,25 +45,20 @@
 in vec3 teUvCoordinates;
 in vec3 teNormal;
 in vec2 teBoundingBox;
+in mat4 teTbnMatrix;
+in vec3 teEyeVector;
 
 // Output fragment color
 out vec4 fFragmentColor;
 
 // Texture sampler of the color texture
 uniform sampler2D uTextureSampler;
-// Texture sampler of the heightmap
 uniform sampler2D uHeightmap;
 
 // Enable parallax mapping switch
 uniform int uParallax;
-// Scale for the heightmap data used in parallax
-// mapping
 uniform float uHeightScale;
 uniform vec3 uEyeWorldPosition;
-
-// Eye vector in world coordinates used in parallax
-// mapping
-in vec3 teEyeVector;
 
 void main()
 {

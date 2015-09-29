@@ -38,40 +38,27 @@ layout (quads, equal_spacing, ccw) in;
 // Input UV coordinates back from the tessellation control
 // shader, previously uploaded from the client
 in vec2 tcUvCoordinates[];
-// Input bounding box for the tile
 in vec2 tcBoundingBox[];
 
 // Output UV coordinates, interpolated using the tessellation
 // patch coordinates
 out vec3 teUvCoordinates;
-
-// Output bounding box for the tile
 out vec2 teBoundingBox;
-// Output normal vector
 out vec3 teNormal;
-// Output eye-vertex vector, used for parallax mapping
 out vec3 teEyeVector;
+out mat3 teTbnMatrix;
 
 // World-space eye position, used for parallax mapping
 uniform vec3 uEyeWorldPosition;
-
-// Model-view-projection matrix
 uniform mat4 uMvpMatrix;
-// Tile model-view matrix
 uniform mat4 uModelMatrix;
-
-// Heightmap texture data
 uniform sampler2D uHeightmap;
-
-// Scale for the heightmap data
 uniform float uHeightScale;
-
-// Number of patches used for the tessellation
 uniform int uSubdivisionCount;
 
 void main() 
 {
-	float u = gl_TessCoord.x;
+	/*float u = gl_TessCoord.x;
 	float v = gl_TessCoord.y;
 	float x = gl_in[0].gl_Position.x;
 	float z = gl_in[0].gl_Position.z;
@@ -130,19 +117,6 @@ void main()
 	downVertex.z = ((v + z - delta) / (uSubdivisionCount + 1)) - 0.5f;
 
 	// Normal vector calculation
-	/*vec3 centerLeft = leftVertex - centerVertex;
-	vec3 centerUp = upVertex - centerVertex;
-	vec3 centerRight = rightVertex - centerVertex;
-	vec3 centerDown = downVertex - centerVertex;
-
-	vec3 nUpLeft = cross(centerUp, centerLeft);
-	vec3 nLeftDown = cross(centerLeft, centerDown);
-	vec3 nDownRight = cross(centerDown, centerRight);
-	vec3 nRightUp = cross(centerRight, centerUp);
-
-	teNormal = normalize((nUpLeft + nLeftDown + nDownRight + nRightUp) / 4);*/
-
-	// VALID
 	vec3 leftRight = rightVertex - leftVertex;
 	vec3 downUp = upVertex - downVertex;
 	teNormal = normalize(cross(leftRight, downUp));
@@ -191,5 +165,283 @@ void main()
 	teBoundingBox = tcBoundingBox[0];
 
     // Vertex position translation to screen-space
-    gl_Position = uMvpMatrix * gl_Position;
+    gl_Position = uMvpMatrix * gl_Position;*/
+
+	float u = gl_TessCoord.x;
+	float v = gl_TessCoord.y;
+	float x = gl_in[0].gl_Position.x;
+	float z = gl_in[0].gl_Position.z;
+
+	vec4 centerVertex, upVertex, rightVertex, downVertex, leftVertex;
+	vec2 centerCoords, upCoords, rightCoords, downCoords, leftCoords;
+
+	centerCoords.s = (u + x) / (uSubdivisionCount + 1);
+	centerCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+	centerVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+	centerVertex.y = uHeightScale * texture2D(uHeightmap, centerCoords).r;
+	centerVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+	centerVertex.w = 1;
+
+	vec4 T,B,N;
+
+	if (u == 0 && v < 1 && v > 0)
+	{
+		vec4 upVertex, rightVertex;
+		vec2 upCoords, rightCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelOuter[0]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelOuter[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u < 1 && u > 0 && v == 0)
+	{
+		vec4 upVertex, rightVertex;
+		vec2 upCoords, rightCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u == 1 && v < 1 && v > 0)
+	{
+		vec4 upVertex, leftVertex;
+		vec2 upCoords, leftCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		leftCoords.s = (u + x - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+		leftCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		leftVertex.x = ((u + x - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.y = uHeightScale * texture2D(uHeightmap, leftCoords).r;
+		leftVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = leftVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u < 1 && u > 0 && v == 1)
+	{
+		vec4 downVertex, rightVertex;
+		vec2 downCoords, rightCoords;
+
+		downCoords.s = (u + x) / (uSubdivisionCount + 1);
+		downCoords.t = (v + z - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+
+		downVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.y = uHeightScale * texture2D(uHeightmap, downCoords).r;
+		downVertex.z = ((v + z - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = downVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u == 0 && v == 0)
+	{
+		vec4 upVertex, rightVertex;
+		vec2 upCoords, rightCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelOuter[0]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelOuter[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u == 1 && v == 0)
+	{
+		vec4 upVertex, leftVertex;
+		vec2 upCoords, leftCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		leftCoords.s = (u + x - (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1);
+		leftCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		leftVertex.x = ((u + x - (1/(1+gl_TessLevelOuter[1]))) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.y = uHeightScale * texture2D(uHeightmap, leftCoords).r;
+		leftVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = leftVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u == 0 && v == 1)
+	{
+		vec4 downVertex, rightVertex;
+		vec2 downCoords, rightCoords;
+
+		downCoords.s = (u + x) / (uSubdivisionCount + 1);
+		downCoords.t = (v + z - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+
+		downVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.y = uHeightScale * texture2D(uHeightmap, downCoords).r;
+		downVertex.z = ((v + z - (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = downVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else if (u == 1 && v == 1)
+	{
+		vec4 downVertex, leftVertex;
+		vec2 downCoords, leftCoords;
+
+		downCoords.s = (u + x) / (uSubdivisionCount + 1);
+		downCoords.t = (v + z - (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1);
+
+		downVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.y = uHeightScale * texture2D(uHeightmap, downCoords).r;
+		downVertex.z = ((v + z - (1/(1+gl_TessLevelOuter[2]))) / (uSubdivisionCount + 1)) - 0.5f;
+		downVertex.w = 1;
+
+		leftCoords.s = (u + x - (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1);
+		leftCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		leftVertex.x = ((u + x - (1/(1+gl_TessLevelOuter[3]))) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.y = uHeightScale * texture2D(uHeightmap, leftCoords).r;
+		leftVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		leftVertex.w = 1;
+
+		T = downVertex - centerVertex;
+		B = leftVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+	else
+	{
+		vec4 upVertex, rightVertex;
+		vec2 upCoords, rightCoords;
+
+		upCoords.s = (u + x) / (uSubdivisionCount + 1);
+		upCoords.t = (v + z + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+
+		upVertex.x = ((u + x) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.y = uHeightScale * texture2D(uHeightmap, upCoords).r;
+		upVertex.z = ((v + z + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		upVertex.w = 1;
+
+		rightCoords.s = (u + x + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1);
+		rightCoords.t = (v + z) / (uSubdivisionCount + 1);
+
+		rightVertex.x = ((u + x + (1/(1+gl_TessLevelInner[0]))) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.y = uHeightScale * texture2D(uHeightmap, rightCoords).r;
+		rightVertex.z = ((v + z) / (uSubdivisionCount + 1)) - 0.5f;
+		rightVertex.w = 1;
+
+		T = upVertex - centerVertex;
+		B = rightVertex - centerVertex;
+		N.xyz = cross(T.xyz,B.xyz);
+		N.w = 0;
+	}
+
+	// TBN matrix
+	T = normalize(T);
+	B = normalize(B);
+	N = normalize(N);
+
+	teTbnMatrix = mat3(T.xyz,
+					   B.xyz,
+					   N.xyz);
+
+	// Eye vector (in tangent space)
+	vec3 worldSpaceVxPos = (uModelMatrix * centerVertex).xyz;
+	teEyeVector = worldSpaceVxPos - uEyeWorldPosition;
+	teEyeVector = teTbnMatrix * teEyeVector;
+	
+	// Normal vector (in tangent space)
+	teNormal = N.xyz;
+
+	// Pass-through bounding box
+	teBoundingBox = tcBoundingBox[0];
+
+	teUvCoordinates.s = centerCoords.s;
+	teUvCoordinates.t = centerCoords.t;
+	teUvCoordinates.p = texture2D(uHeightmap, centerCoords).r;
+	gl_Position = uMvpMatrix * centerVertex;
 }
