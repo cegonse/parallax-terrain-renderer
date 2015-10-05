@@ -36,13 +36,13 @@
    - LINEAR_SEARCH_PARALLAX
    - SECANT_PARALLAX
 */
-#define SIMPLE_PARALLAX
+#define OFFSET_LIMITING_PARALLAX
 
 // Iteration count for iterative parallax mapping approximation
-#define PARALLAX_IT 3
+#define PARALLAX_IT 8
 
 // UV coordinates of the incoming vertex
-in vec3 teUvCoordinates;
+in vec4 teUvCoordinates;
 in vec3 teNormal;
 in vec2 teBoundingBox;
 in mat4 teTbnMatrix;
@@ -76,7 +76,7 @@ void main()
 
 #ifdef SIMPLE_PARALLAX
 		float hsb = texture(uHeightmap, teUvCoordinates.st).r - teUvCoordinates.z;
-		uvCoordOffset += hsb * SCALE * normEyeVector.xz;
+		uvCoordOffset += hsb * SCALE * normEyeVector.xz / normEyeVector.y;
 #endif
 
 #ifdef OFFSET_LIMITING_PARALLAX
@@ -87,15 +87,24 @@ void main()
 #ifdef SLOPE_PARALLAX
 		/*float hsb = texture(uHeightmap, teUvCoordinates.st).r;
 		uvCoordOffset = teUvCoordinates.st + (hsb - teUvCoordinates.z) * SCALE * normEyeVector.xz / normEyeVector.y;*/
-		float hsb = (texture(uHeightmap, uvCoordOffset.st).r - teUvCoordinates.z) * SCALE;
-		uvCoordOffset = teUvCoordinates.st + hsb * normal.y * normEyeVector.xz;
+		vec2 hn = texture(uHeightmap, uvCoordOffset.st).xy;
+		float hsb = (hn.x - teUvCoordinates.z) * SCALE;
+		uvCoordOffset = teUvCoordinates.st + hsb * hn.y * normEyeVector.xz;
 #endif
 
 #ifdef ITERATIVE_PARALLAX
+		float rayHeight = 1;//teUvCoordinates.w * SCALE;
+		vec2 hn = texture(uHeightmap, uvCoordOffset).rg;
+		vec3 uvh = (hn.r - teUvCoordinates.z - rayHeight) * SCALE * hn.g * normEyeVector;
+
 		for (int i = 0; i < PARALLAX_IT; i++)
 		{
-			vec2 heightNormal = texture(uHeightmap, uvCoordOffset).rg;
-			uvCoordOffset += (heightNormal.r - teUvCoordinates.z) * SCALE * heightNormal.g * normEyeVector.xz;// / normEyeVector.y;
+			hn = texture(uHeightmap, uvCoordOffset).rg;
+			float h = hn.r * SCALE;
+
+			uvh.st += (hn.r - teUvCoordinates.z - rayHeight) * SCALE * hn.g * normEyeVector.xz;
+			uvCoordOffset += uvh.st;
+			//rayHeight -= uvh.z;
 		}
 #endif
 
@@ -136,8 +145,8 @@ void main()
 		float hsb2 = 0;///*teBoundingBox.t*/1.0 - teUvCoordinates.z;
 		float delta = (hsb1 - hsb2) / PARALLAX_IT;
 
-		vec2 ST1 = teUvCoordinates.st + hsb1 * SCALE * normEyeVector.xz / normEyeVector.y;
-		vec2 ST2 = teUvCoordinates.st + hsb2 * SCALE * normEyeVector.xz / normEyeVector.y;
+		vec2 ST1 = teUvCoordinates.st + hsb1 * SCALE * normEyeVector.xz;
+		vec2 ST2 = teUvCoordinates.st + hsb2 * SCALE * normEyeVector.xz;
 		vec2 STint;
 
 		for (int i = 0; i < PARALLAX_IT; i++)
@@ -199,6 +208,8 @@ void main()
 	
 		// Discard fragments where the offset sets the UV coordinates
 		// out of bounds
+		if (uvCoordOffset.s > 1 || uvCoordOffset.t > 1 ||
+			uvCoordOffset.s < 0 || uvCoordOffset.t < 0) discard;
 
 		fFragmentColor = texture(uTextureSampler, clamp(uvCoordOffset, 0, 1));
 	}
