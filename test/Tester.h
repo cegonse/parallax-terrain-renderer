@@ -8,40 +8,50 @@
 #include <vector>
 #include <fstream>
 
-
-#include "Renderer.h"
-#include "Project.h"
-#include "BezierCurve.h"
-#include "ScreenshotWritter.h"
-
-
-#include <GLFW/glfw3.h>
+#include <Renderer.h>
+#include <Project.h>
+#include <BezierCurve.h>
+#include <ScreenshotWritter.h>
+#include <glfw/glfw3.h>
 
 enum CurrentRun
 {
-	CURRENT_RUN_FPS = 0,
+	CURRENT_RUN_FPS_CPU = 0,
+	CURRENT_RUN_FPS_GPU,
 	CURRENT_RUN_TRIS,
 	CURRENT_RUN_MSE
+};
+
+enum ParallaxType
+{
+	PARALLAX_TYPE_NONE = 0,
+	PARALLAX_TYPE_OFFSET,
+	PARALLAX_TYPE_BINARY,
+	PARALLAX_TYPE_LINEAR,
+	PARALLAX_TYPE_SECANT
 };
 
 struct TestData
 {
 	std::vector< std::vector<double> > meanFps;
+// BEGIN_MARIANO
+	std::vector< std::vector<double> > meanFpsGPU;
+// END_MARIANO
 	std::vector< std::vector<int> > triangles;
 };
 
-class WebHandler;
+void SplitArguments(const char* cmd, std::vector<std::string> & v);
 
 class Tester
 {
 	public:
 		Tester(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax,
-				const std::string & path, WebHandler* hndl);
+				const std::string & path, int parallaxType);
 		Tester();
 		~Tester();
 
 		void SetUp(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax,
-				const std::string & path, WebHandler* hndl);
+				const std::string & path);
 		void Start(bool pollEvents);
 		bool IsRunning() const;
 		void WriteStatistics();
@@ -60,6 +70,7 @@ class Tester
 		unsigned int _runCount;
 		float _dMax;
 		std::string _projectPath;
+		int _parallaxType;
 
 		bool _run;
 		GLFWwindow* _glContext;
@@ -103,7 +114,6 @@ class Tester
 		float _captureDist;
 
 		std::vector<TestData> _testData;
-		WebHandler* _handler;
 };
 
 #endif /* _TESTER_H_ */

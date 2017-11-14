@@ -1,20 +1,19 @@
 #include "Tester.h"
-#include "WebHandler.h"
 
-Tester::Tester(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax, const std::string & path, WebHandler* hndl)
+Tester::Tester(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax, const std::string & path, int parallaxType)
 {
 	_run = true;
 	_currentRun = 0;
 	_lastFps = 0.0;
 	_currentTl = minTl;
+	_parallaxType = parallaxType;
 
 	_animationTimer = 0.0;
 	_cpuFrequency = 0.0;
 	_deltaTime = 0.0;
-	_handler = hndl;
 	_started = true;
 
-	SetUp(width, height, minTl, maxTl, captureCount, runCount, dmax, path, hndl);
+	SetUp(width, height, minTl, maxTl, captureCount, runCount, dmax, path);
 }
 
 Tester::Tester()
@@ -40,7 +39,7 @@ Tester::~Tester()
 }
 
 
-void Tester::SetUp(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax, const std::string & path, WebHandler* hndl)
+void Tester::SetUp(int width, int height, int minTl, int maxTl, int captureCount, int runCount, float dmax, const std::string & path)
 {
 	_width = width;
 	_height = height;
@@ -126,7 +125,7 @@ void Tester::Init()
 		throw std::invalid_argument("Error loading terrain project.");
 	}
 
-	_runType = CURRENT_RUN_FPS;
+	_runType = CURRENT_RUN_FPS_CPU;
 }
 
 
@@ -147,7 +146,7 @@ void Tester::SetAnimationData()
 	{
 		if (i + 3 < _waypoints.size())
         {
-			/* Generate a cubic curve with the samples of waypoints */
+			// Generate a cubic curve with the samples of waypoints
 			BezierCurve pathSpline;
 
 			pathSpline.AddControlPoint(glm::vec2(_waypoints[i]->GetOrigin().x, _waypoints[i]->GetOrigin().z));
@@ -155,7 +154,7 @@ void Tester::SetAnimationData()
 			pathSpline.AddControlPoint(glm::vec2(_waypoints[i + 2]->GetOrigin().x, _waypoints[i + 2]->GetOrigin().z));
 			pathSpline.AddControlPoint(glm::vec2(_waypoints[i + 3]->GetOrigin().x, _waypoints[i + 3]->GetOrigin().z));
 
-			/* Evaluate the curve to obtain the final camera travel points */
+			// Evaluate the curve to obtain the final camera travel points
 			for (float t = 0.0f; t <= 1.0f; t += 0.01f)
 			{
 				_pathPoints.push_back(glm::vec3(pathSpline.Evaluate(t).x, _project->GetConstantHeight(), pathSpline.Evaluate(t).y));
@@ -193,6 +192,9 @@ void Tester::SetAnimationData()
 		_testData.push_back(TestData());
 
 		_testData[i].meanFps.resize(_maxTl - _minTl + 2);
+// BEGIN_MARIANO
+		_testData[i].meanFpsGPU.resize(_maxTl - _minTl + 2);
+// END_MARIANO
 		_testData[i].triangles.resize(_maxTl - _minTl + 2);
 	}
 
@@ -201,7 +203,9 @@ void Tester::SetAnimationData()
 	_captureDist = 0.0f;
 }
 
+#define PRUEBA0
 
+#ifdef PRUEBA0
 void Tester::Start(bool pollEvents)
 {
 	Color clearColor(1.0f, 1.0f, 1.0f);
@@ -209,8 +213,23 @@ void Tester::Start(bool pollEvents)
 	bool nextGetTris = false;
 	unsigned int tlIndex = 0;
 
-	int cpr = _pathPoints.size() / (_captureCount + 1);
+	int cpr = (int)_pathPoints.size() / (_captureCount + 1);
 	int cpi = 0;
+// BEGIN_MARIANO
+	static double timeElapsedCPU = 0;
+	static double timeElapsedGPU = 0;
+	const int NUM_MUESTRAS_FRAME_FPS = 20;
+	unsigned long long muestra = 0;
+
+	_currentRunFpsSamples = 0;
+	timeElapsedCPU = 0;
+	timeElapsedGPU = 0;
+// END_MARIANO.
+
+	if (_parallaxType != PARALLAX_TYPE_NONE)
+	{
+		_renderer->ToggleParallax();
+	}
 
 	while (_run && !contextClose)
 	{
@@ -218,65 +237,283 @@ void Tester::Start(bool pollEvents)
 		{
 			contextClose = glfwWindowShouldClose(_glContext) == 1;
 		}
-		
-		// Camera animation
-		//if (_pathIndex == 1)
-		//{
-		//	std::cout << "";
-		//}
+
+	
+// BEGIN_MARIANO
+		if ( muestra == 0 || _runType != CURRENT_RUN_FPS_CPU && _runType != CURRENT_RUN_FPS_GPU )
+		{
+// END_MARIANO.
 
 		_origin0 = _pathPoints[_pathIndex - 1];
 		_target0 = glm::vec3(_pathPoints[_pathIndex - 1].x, _pathPoints[_pathIndex - 1].y - 0.5 * _pathPoints[_pathIndex].y, _pathPoints[_pathIndex - 1].z)  + _pathTangents[_pathIndex - 1];
-		//_origin1 = _pathPoints[_pathIndex];
-		//_target1 = glm::vec3(_pathPoints[_pathIndex].x, _pathPoints[_pathIndex].y - 0.5 * _pathPoints[_pathIndex].y, _pathPoints[_pathIndex].z) + _pathTangents[_pathIndex];
-
-		_cameraPosition = _origin0;//glm::mix(_origin0, _origin1, _animationTimer);
-		_cameraTarget = _target0;//glm::mix(_target0, _target1, _animationTimer);
+		_cameraPosition = _origin0;
+		_cameraTarget = _target0;
 
 		_viewportCamera->SetOrigin(_cameraPosition);
 		_viewportCamera->SetTarget(_cameraTarget);
+// BEGIN_MARIANO
+		}
 
-		// Start counting time
-		QueryPerformanceCounter(&_startTime);
+		if ( _runType == CURRENT_RUN_FPS_CPU || _runType == CURRENT_RUN_FPS_GPU )
+		{
+			muestra ++;
+			// Start counting time
+			if ( _runType == CURRENT_RUN_FPS_CPU )  
+				QueryPerformanceCounter(&_startTime);
+		}
+// END_MARIANO.
 
 		// Render terrain
 		_renderer->DoFrame(&clearColor);
-		_renderer->DrawProject(_project, false, _dMax, _currentTl, nextGetTris);
+		_renderer->DrawProject(_project, true, _dMax, _currentTl, nextGetTris);
 
-		if (nextGetTris)
+		glfwSwapBuffers(_glContext);
+		if (pollEvents)
 		{
-			_testData[_currentRun].triangles[tlIndex].push_back(_renderer->GetLastFrameTriangles());
+			glfwPollEvents();
+		}
+
+		// Get triangle count
+		if (_runType == CURRENT_RUN_TRIS && nextGetTris)
+		{
+			unsigned int tris = _renderer->GetLastFrameTriangles();
+			_testData[_currentRun].triangles[tlIndex].push_back(tris);
 			nextGetTris = false;
 		}
 
-		glfwSwapBuffers(_glContext);
-
+// BEGIN_MARIANO		
 		// Get frame FPS and delta time
 		// CPU Frequency should be fetched regularly, since the system
 		// can change it depending on its load on mobility processors
 		// and systems with technologies similar to Intel Turbo Boost
-		QueryPerformanceCounter(&_endTime);
-		QueryPerformanceFrequency(&_processorFrequency);
-		_cpuFrequency = static_cast<double>(_processorFrequency.QuadPart);
+		if ( _runType == CURRENT_RUN_FPS_CPU || _runType == CURRENT_RUN_FPS_GPU )
+		{
+			if ( _runType == CURRENT_RUN_FPS_CPU )
+			{
+				QueryPerformanceCounter(&_endTime);
+				QueryPerformanceFrequency(&_processorFrequency);
+				_cpuFrequency = static_cast<double>(_processorFrequency.QuadPart);
+				_deltaTime = static_cast<double>((_endTime.QuadPart - _startTime.QuadPart) / _cpuFrequency);
+				timeElapsedCPU += _deltaTime;
+			}
+			else
+				timeElapsedGPU += _renderer->GetLastFrameGPUTime();
 
-		sprintf_s(_title, 128, "TL: %d, Run: %d, Run Type: %d, Td: %f / %f", _currentTl, _currentRun, _runType, _totalDistance, _distancePerCapture);
-		glfwSetWindowTitle(_glContext, _title);
+			_currentRunFpsSamples++;
+		}
+		//_lastFps = 1.0 / _deltaTime;
+		// Obtain statistics and flow control
+		//_currentRunFps += _lastFps;
 
-		_deltaTime = static_cast<double>((_endTime.QuadPart - _startTime.QuadPart) / _cpuFrequency);
-		//_animationTimer += 0.1;//_deltaTime;
-		//_captureDist += _deltaTime;
-		_lastFps = 1.0 / _deltaTime;
+
+		if ( muestra == NUM_MUESTRAS_FRAME_FPS || _runType != CURRENT_RUN_FPS_CPU && _runType != CURRENT_RUN_FPS_GPU )
+		{
+			muestra = 0;
+// END_MARIANO.
+			if (cpi == cpr)
+			{
+				cpi = 0;
+
+				if (_runType == CURRENT_RUN_FPS_CPU)
+				{
+					_testData[_currentRun].meanFps[tlIndex].push_back( double(_currentRunFpsSamples) / timeElapsedCPU );
+
+					_currentRunFpsSamples = 0;
+					timeElapsedCPU = 0;
+					timeElapsedGPU = 0;
+				}
+				else if (_runType == CURRENT_RUN_FPS_GPU)
+				{
+					_testData[_currentRun].meanFpsGPU[tlIndex].push_back( double(_currentRunFpsSamples) / timeElapsedGPU );
+
+					_currentRunFpsSamples = 0;
+					timeElapsedCPU = 0;
+					timeElapsedGPU = 0;
+				}
+// END_MARIANO.				
+				else if (_runType == CURRENT_RUN_TRIS)
+				{
+					nextGetTris = true;
+				}
+				else if (_runType == CURRENT_RUN_MSE)
+				{
+					if (_currentRun == 0)
+					{
+						/*
+						MemoryTexture* tex = _renderer->GetFramebufferPixels();
+
+						char fileName[128];
+						sprintf_s(fileName, 128, "capture_%d_%d.tiff", _currentTl, _capturesDone);
+
+						SaveScreenshot(tex, fileName);
+						delete tex;
+						*/
+					}
+				}
+				_capturesDone++;
+			}
+
+			if (_pathIndex < _pathPoints.size() - 1)
+			{
+				_pathIndex++;
+				cpi++;
+			}
+			else
+			{
+				_pathIndex = 1;
+				cpi = 0;
+				_currentRun++;
+				_capturesDone = 0;
+
+				if (_currentRun == _runCount)
+				{
+					//
+					//
+					// cambiar por ++
+					//
+					//
+					_currentTl++;
+					tlIndex++;
+					_currentRun = 0;
+
+					char wt[256];
+					sprintf_s(wt, "TL: %d, MD: %d", _currentTl, _runType);
+					glfwSetWindowTitle(_glContext, wt);
+
+					if (_currentTl > _maxTl)
+					{
+						_currentTl = _minTl;
+						tlIndex = 0;
+
+						if (_runType == CURRENT_RUN_FPS_CPU)
+						{
+							_runType = CURRENT_RUN_FPS_GPU;
+						}
+						else if (_runType == CURRENT_RUN_FPS_GPU)
+						{
+							_runType = CURRENT_RUN_TRIS;
+						}
+						else if (_runType == CURRENT_RUN_TRIS)
+						{
+							_runType = CURRENT_RUN_MSE;
+						}
+						else if (_runType == CURRENT_RUN_MSE)
+						{
+							_run = false;
+						}					
+					}
+				}
+			}
+
+// BEGIN_MARIANO
+		}
+// END_MARIANO.		
+	}
+
+	WriteStatistics();
+}
+#endif
+
+#ifdef PRUEBA1
+void Tester::Start(bool pollEvents)
+{
+	Color clearColor(1.0f, 1.0f, 1.0f);
+	bool contextClose = false;
+	bool nextGetTris = false;
+	unsigned int tlIndex = 0;
+
+	int cpr = (int)_pathPoints.size() / (_captureCount + 1);
+	int cpi = 0;
+
+// BEGIN_MARIANO
+	static double timeElapsedCPU = 0;
+	static double timeElapsedGPU = 0;
+	const int NUM_MUESTRAS_FRAME_FPS = 1; // Numero de veces que se dibuja el mismo frame (Para obtener un FPS más estable)
+	unsigned long long muestra = 0;
+
+	_currentRunFpsSamples = 0;
+	timeElapsedCPU = 0;
+	timeElapsedGPU = 0;
+// END_MARIANO.
+
+	if (_parallaxType != PARALLAX_TYPE_NONE)
+	{
+		_renderer->ToggleParallax();
+	}
+
+	while (_run && !contextClose)
+	{
+		if (pollEvents)
+		{
+			contextClose = glfwWindowShouldClose(_glContext) == 1;
+		}
+
+// BEGIN_MARIANO
+		if ( muestra == 0 || _runType != CURRENT_RUN_FPS )
+		{
+// END_MARIANO.
+
+		_origin0 = _pathPoints[_pathIndex - 1];
+		_target0 = glm::vec3(_pathPoints[_pathIndex - 1].x, _pathPoints[_pathIndex - 1].y - 0.5 * _pathPoints[_pathIndex].y, _pathPoints[_pathIndex - 1].z)  + _pathTangents[_pathIndex - 1];
+		_cameraPosition = _origin0;
+		_cameraTarget = _target0;
+
+		_viewportCamera->SetOrigin(_cameraPosition);
+		_viewportCamera->SetTarget(_cameraTarget);
+// BEGIN_MARIANO
+		}
+
+		//if ( _runType == CURRENT_RUN_FPS )
+		{
+			muestra ++;
+			// Start counting time
+			QueryPerformanceCounter(&_startTime);
+		}
+// END_MARIANO.
+		
+		// Render terrain
+		_renderer->DoFrame(&clearColor);
+		_renderer->DrawProject(_project, true, _dMax, _currentTl, nextGetTris);
+
+		glfwSwapBuffers(_glContext);
+
+		// Get triangle count
+		if (nextGetTris)
+		{
+			unsigned int tris = _renderer->GetLastFrameTriangles();
+			_testData[_currentRun].triangles[tlIndex].push_back(tris);
+			nextGetTris = false;
+		}
 
 		if (pollEvents)
 		{
 			glfwPollEvents();
 		}
 
-		// Obtain statistics and flow control
-		//_distanceToNext = abs(glm::distance(_cameraPosition, _origin1));
-		_currentRunFps += _lastFps;
-		_currentRunFpsSamples++;
+		// Get frame FPS and delta time
+		// CPU Frequency should be fetched regularly, since the system
+		// can change it depending on its load on mobility processors
+		// and systems with technologies similar to Intel Turbo Boost
+		//if ( _runType == CURRENT_RUN_FPS )
+		{
+			//timeElapsedGPU += _renderer->GetLastFrameGPUTime();
 
+			QueryPerformanceCounter(&_endTime);
+			QueryPerformanceFrequency(&_processorFrequency);
+			_cpuFrequency = static_cast<double>(_processorFrequency.QuadPart);
+			_deltaTime = static_cast<double>((_endTime.QuadPart - _startTime.QuadPart) / _cpuFrequency);
+			timeElapsedCPU += _deltaTime;
+
+			_currentRunFpsSamples++;
+		}
+
+		_lastFps = 1.0 / _deltaTime;
+		// Obtain statistics and flow control
+		_currentRunFps += _lastFps;
+
+
+
+		muestra = 0; //// QUITAR//////////////////
 		if (cpi == cpr)
 		{
 			cpi = 0;
@@ -287,8 +524,10 @@ void Tester::Start(bool pollEvents)
 			}
 			else if (_runType == CURRENT_RUN_MSE)
 			{
+				
 				if (_currentRun == 0)
 				{
+					/*
 					MemoryTexture* tex = _renderer->GetFramebufferPixels();
 
 					char fileName[128];
@@ -296,7 +535,9 @@ void Tester::Start(bool pollEvents)
 
 					SaveScreenshot(tex, fileName);
 					delete tex;
+					*/
 				}
+				
 			}
 			else if (_runType == CURRENT_RUN_FPS)
 			{
@@ -308,28 +549,32 @@ void Tester::Start(bool pollEvents)
 			_capturesDone++;
 		}
 
-		/*if (_distanceToNext < 0.01f)
-		{
-			_totalDistance += _distancePerSample;*/
 		if (_pathIndex < _pathPoints.size() - 1)
 		{
 			_pathIndex++;
 			cpi++;
-			//_animationTimer = 0;
 		}
 		else
 		{
 			_pathIndex = 1;
 			cpi = 0;
 			_currentRun++;
-			//_totalDistance = 0.0f;
 			_capturesDone = 0;
 
 			if (_currentRun == _runCount)
 			{
+				//
+				//
+				// cambiar por ++
+				//
+				//
 				_currentTl++;
 				tlIndex++;
 				_currentRun = 0;
+
+				char wt[256];
+				sprintf_s(wt, "TL: %d, MD: %d", _currentTl, _runType);
+				glfwSetWindowTitle(_glContext, wt);
 
 				if (_currentTl > _maxTl)
 				{
@@ -351,16 +596,169 @@ void Tester::Start(bool pollEvents)
 				}
 			}
 		}
-		//}
 	}
 
 	WriteStatistics();
 }
+#endif
 
+#ifdef PRUEBA2
+{
+	Color clearColor(1.0f, 1.0f, 1.0f);
+	bool contextClose = false;
+	bool nextGetTris = false;
+	unsigned int tlIndex = 0;
+
+	int cpr = (int)_pathPoints.size() / (_captureCount + 1);
+	int cpi = 0;
+
+	if (_parallaxType != PARALLAX_TYPE_NONE)
+	{
+		_renderer->ToggleParallax();
+	}
+
+	while (_run && !contextClose)
+	{
+		if (pollEvents)
+		{
+			contextClose = glfwWindowShouldClose(_glContext) == 1;
+		}
+
+		_origin0 = _pathPoints[_pathIndex - 1];
+		_target0 = glm::vec3(_pathPoints[_pathIndex - 1].x, _pathPoints[_pathIndex - 1].y - 0.5 * _pathPoints[_pathIndex].y, _pathPoints[_pathIndex - 1].z)  + _pathTangents[_pathIndex - 1];
+		_cameraPosition = _origin0;
+		_cameraTarget = _target0;
+
+		_viewportCamera->SetOrigin(_cameraPosition);
+		_viewportCamera->SetTarget(_cameraTarget);
+
+		// Start counting time
+		QueryPerformanceCounter(&_startTime);
+		
+		// Render terrain
+		_renderer->DoFrame(&clearColor);
+		_renderer->DrawProject(_project, true, _dMax, _currentTl, nextGetTris);
+
+		glfwSwapBuffers(_glContext);
+
+		// Get triangle count
+		if (nextGetTris)
+		{
+			unsigned int tris = _renderer->GetLastFrameTriangles();
+			_testData[_currentRun].triangles[tlIndex].push_back(tris);
+			nextGetTris = false;
+		}
+
+		if (pollEvents)
+		{
+			glfwPollEvents();
+		}
+
+		// Get frame FPS and delta time
+		// CPU Frequency should be fetched regularly, since the system
+		// can change it depending on its load on mobility processors
+		// and systems with technologies similar to Intel Turbo Boost
+		QueryPerformanceCounter(&_endTime);
+		QueryPerformanceFrequency(&_processorFrequency);
+		_cpuFrequency = static_cast<double>(_processorFrequency.QuadPart);
+		_deltaTime = static_cast<double>((_endTime.QuadPart - _startTime.QuadPart) / _cpuFrequency);
+		_lastFps = 1.0 / _deltaTime;
+
+		// Obtain statistics and flow control
+		_currentRunFps += _lastFps;
+		_currentRunFpsSamples++;
+
+		if (cpi == cpr)
+		{
+			cpi = 0;
+
+			if (_runType == CURRENT_RUN_TRIS)
+			{
+				nextGetTris = true;
+			}
+			else if (_runType == CURRENT_RUN_MSE)
+			{
+				
+				if (_currentRun == 0)
+				{
+					/*
+					MemoryTexture* tex = _renderer->GetFramebufferPixels();
+
+					char fileName[128];
+					sprintf_s(fileName, 128, "capture_%d_%d.tiff", _currentTl, _capturesDone);
+
+					SaveScreenshot(tex, fileName);
+					delete tex;
+					*/
+				}
+				
+			}
+			else if (_runType == CURRENT_RUN_FPS)
+			{
+				_testData[_currentRun].meanFps[tlIndex].push_back(_currentRunFps / static_cast<double>(_currentRunFpsSamples));
+				_currentRunFps = 0.0;
+				_currentRunFpsSamples = 0;
+			}
+
+			_capturesDone++;
+		}
+
+		if (_pathIndex < _pathPoints.size() - 1)
+		{
+			_pathIndex++;
+			cpi++;
+		}
+		else
+		{
+			_pathIndex = 1;
+			cpi = 0;
+			_currentRun++;
+			_capturesDone = 0;
+
+			if (_currentRun == _runCount)
+			{
+				//
+				//
+				// cambiar por ++
+				//
+				//
+				_currentTl++;
+				tlIndex++;
+				_currentRun = 0;
+
+				char wt[256];
+				sprintf_s(wt, "TL: %d, MD: %d", _currentTl, _runType);
+				glfwSetWindowTitle(_glContext, wt);
+
+				if (_currentTl > _maxTl)
+				{
+					_currentTl = _minTl;
+					tlIndex = 0;
+
+					if (_runType == CURRENT_RUN_FPS)
+					{
+						_runType = CURRENT_RUN_TRIS;
+					}
+					else if (_runType == CURRENT_RUN_TRIS)
+					{
+						_runType = CURRENT_RUN_MSE;
+					}
+					else if (_runType == CURRENT_RUN_MSE)
+					{
+						_run = false;
+					}
+				}
+			}
+		}
+	}
+
+	WriteStatistics();
+}
+#endif
 
 void Tester::WriteStatistics()
 {
-	// Save FPS
+	// Save FPS (CPU)
 	for (unsigned int run = 0; run < _testData.size(); run++)
 	{
 		char path[128];
@@ -372,6 +770,26 @@ void Tester::WriteStatistics()
 			for (int cap = 0; cap < _testData[run].meanFps[tl].size(); cap++)
 			{
 				file << _testData[run].meanFps[tl][cap] << " ";
+			}
+
+			file << std::endl;
+		}
+
+		file.close();
+	}
+
+	// Save FPS (GPU)
+	for (unsigned int run = 0; run < _testData.size(); run++)
+	{
+		char path[128];
+		sprintf_s(path, 128, "fpsGPU_%d_%d_%d.dlm", run, _minTl, _maxTl);
+		std::ofstream file(path);
+
+		for (int tl = 0; tl < _testData[run].meanFpsGPU.size(); tl++)
+		{
+			for (int cap = 0; cap < _testData[run].meanFpsGPU[tl].size(); cap++)
+			{
+				file << _testData[run].meanFpsGPU[tl][cap] << " ";
 			}
 
 			file << std::endl;
