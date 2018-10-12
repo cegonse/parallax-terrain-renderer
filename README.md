@@ -4,7 +4,7 @@ This is the source code for a terrain rendering engine using OpenGL and combinin
 The solution includes a 3D terrain viewing application, a terrain project editor and a testing application to evaluate the performance of the rendering engine. It makes use of OpenGL 4.3, tessellation
 and geometry shaders and combines them with per-pixel displacement mapping techniques based on parallax mapping, binary searches and linear searches.
 
-The project has been featured in the followin papers, which explains the mathematical details of the implemented algorithms:
+The project has been featured in the following papers, which explain the mathematical details of the implemented algorithms:
 
 * Combining displacement mapping methods on the GPU for real-time terrain visualization
 * The Journal of Supercomputing, January 2017, Volume 73
